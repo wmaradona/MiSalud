@@ -18,18 +18,38 @@ async function verifyPassword(password, hash) {
 const app = {
   currentUser: null,
   state: { vistaActual: 'loading', filtroEstudios: 'todos' },
+  SESSION_TIMEOUT_HOURS: 24,
 
   async init() {
     this.setupEventListeners();
+    this.setupActivityMonitor();
     this.checkAuth();
   },
 
-  async request(endpoint, options = {}) {
-    throw new Error('Método request ya no se usa con Supabase');
+  setupActivityMonitor() {
+    const resetActivity = () => {
+      if (this.currentUser && this.currentUser.id) {
+        localStorage.setItem('lastActivity', Date.now().toString());
+      }
+    };
+    ['mousedown', 'keydown', 'touchstart', 'scroll'].forEach(event => {
+      document.addEventListener(event, resetActivity, { passive: true });
+    });
+    resetActivity();
   },
 
   checkAuth() {
     const savedUser = localStorage.getItem('currentUser');
+    const lastActivity = localStorage.getItem('lastActivity');
+    
+    if (savedUser && lastActivity) {
+      const hoursSinceActivity = (Date.now() - parseInt(lastActivity)) / (1000 * 60 * 60);
+      if (hoursSinceActivity > this.SESSION_TIMEOUT_HOURS) {
+        this.logout();
+        return;
+      }
+    }
+    
     if (savedUser) {
       try {
         this.currentUser = JSON.parse(savedUser);
