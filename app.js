@@ -187,6 +187,7 @@ const app = {
         this.renderInicio();
         break;
       case 'estudios':
+        this.state.filtroEstudios = 'todos';
         this.renderEstudios();
         break;
       case 'estudio-form':
@@ -251,6 +252,15 @@ const app = {
     });
   },
 
+  formatFecha(fecha) {
+    if (!fecha) return '';
+    const parts = fecha.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}-${parts[1]}-${parts[0]}`;
+    }
+    return fecha;
+  },
+
   async renderInicio() {
     document.getElementById('user-nombre').textContent = this.currentUser?.nombre || 'Usuario';
     try {
@@ -263,6 +273,12 @@ const app = {
       document.getElementById('stat-estudios').textContent = estudiosCount;
       document.getElementById('stat-consultas').textContent = consultasCount;
 
+      // Cargar nombres de especialidades y tipos
+      const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
+      const { data: tipos } = await supabaseClient.from('tipos_estudio').select('*').eq('usuarioid', this.currentUser.id);
+      const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
+      const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
+
       const ultimos = [...(estudios.data || []), ...(consultas.data || [])].sort((a, b) => new Date(b.fecha) - new Date(a.fecha)).slice(0, 5);
       const container = document.getElementById('ultimos-estudios-list');
       if (ultimos.length === 0) {
@@ -270,12 +286,19 @@ const app = {
       } else {
         container.innerHTML = ultimos.map(e => {
           const isConsulta = e.motivo !== undefined;
+          let meta = '';
+          if (isConsulta) {
+            meta = e.especialidad_id ? espMap[e.especialidad_id] : '';
+          } else {
+            const parts = [e.especialidad_id ? espMap[e.especialidad_id] : '', e.tipo_estudio_id ? tipoMap[e.tipo_estudio_id] : ''].filter(Boolean).join(' - ');
+            meta = parts;
+          }
           return `
             <div class="timeline-item" onclick="app.navigate('${isConsulta ? 'consulta-detalle' : 'estudio-detalle'}', {id: '${e.id}'})">
               <div class="timeline-icon ${isConsulta ? 'consulta' : 'estudio'}">${isConsulta ? '🏥' : '📋'}</div>
               <div class="timeline-content">
                 <strong>${e.nombre || e.motivo}</strong>
-                <p>${e.fecha}</p>
+                <p>${this.formatFecha(e.fecha)}${meta ? ' • ' + meta : ''}</p>
               </div>
             </div>
           `;
@@ -287,33 +310,39 @@ const app = {
   },
 
 async renderEstudios(busqueda = '') {
-    // Cargar filtros de especialidades dinámicamente
-    const { data: especialidades } = await supabaseClient
-      .from('especialidades')
-      .select('*')
-      .eq('usuarioid', this.currentUser.id)
-      .order('nombre');
-    
-    const filtrosContainer = document.getElementById('estudios-filtros');
-    if (filtrosContainer && especialidades) {
-      filtrosContainer.innerHTML = '<button class="filtro-btn active" data-filtro="todos">Todos</button>' +
-        especificaciones.map(e => `<button class="filtro-btn" data-filtro="${e.id}">${e.nombre}</button>`).join('');
-      
-      // Re-attach event listeners
-      filtrosContainer.querySelectorAll('.filtro-btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-          filtrosContainer.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
-          btn.classList.add('active');
-          this.state.filtroEstudios = btn.dataset.filtro;
-          this.renderEstudios();
-        });
-      });
-    }
-    
-    if (!this.state.filtroEstudios) this.state.filtroEstudios = 'todos';
-    
     const container = document.getElementById('estudios-list');
+    if (!container) return;
+    container.innerHTML = '<p class="empty-text">Cargando...</p>';
+    
     try {
+      // Cargar especialidades y tipos una sola vez
+      const { data: especialidades } = await supabaseClient
+        .from('especialidades')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id)
+        .order('nombre');
+      
+      // Generar filtros dinámicamente
+      const filtrosContainer = document.getElementById('estudios-filtros');
+      if (filtrosContainer) {
+        const botones = '<button class="filtro-btn active" data-filtro="todos">Todos</button>' +
+          (especialidades || []).map(e => `<button class="filtro-btn" data-filtro="${e.id}">${e.nombre}</button>`).join('');
+        filtrosContainer.innerHTML = botones;
+        
+        // Re-attach event listeners
+        filtrosContainer.querySelectorAll('.filtro-btn').forEach(btn => {
+          btn.addEventListener('click', () => {
+            filtrosContainer.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            this.state.filtroEstudios = btn.dataset.filtro;
+            this.renderEstudios();
+          });
+        });
+      }
+      
+      if (!this.state.filtroEstudios) this.state.filtroEstudios = 'todos';
+      
+      // Cargar estudios
       let query = supabaseClient
         .from('estudios')
         .select('*')
@@ -325,12 +354,7 @@ async renderEstudios(busqueda = '') {
       
       const { data: estudios } = await query.order('fecha', { ascending: false });
       
-      // Cargar especialidades y tipos para mostrar nombres
-      const { data: especialidades } = await supabaseClient
-        .from('especialidades')
-        .select('*')
-        .eq('usuarioid', this.currentUser.id);
-      
+      // Cargar tipos para mostrar nombres
       const { data: tipos } = await supabaseClient
         .from('tipos_estudio')
         .select('*')
@@ -339,8 +363,8 @@ async renderEstudios(busqueda = '') {
       const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
       const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
       
-      if (!estudios) {
-        container.innerHTML = '<p class="error-text">Error cargando estudios</p>';
+      if (!estudios || estudios.length === 0) {
+        container.innerHTML = '<p class="empty-text">No hay estudios</p>';
         return;
       }
       
@@ -357,7 +381,7 @@ async renderEstudios(busqueda = '') {
           <div class="card" onclick="app.navigate('estudio-detalle', {id: '${e.id}'})">
             <div class="card-header">
               <div class="card-icon">${e.archivo ? '📎' : '📋'}</div>
-              <div class="card-title"><h3>${e.nombre}</h3><p>${e.fecha}</p></div>
+              <div class="card-title"><h3>${e.nombre}</h3><p>${this.formatFecha(e.fecha)}</p></div>
             </div>
             <div class="card-body">
               ${e.especialidad_id ? `<span class="tag">${espMap[e.especialidad_id] || 'Especialidad'}</span>` : ''}
@@ -380,6 +404,8 @@ async renderEstudios(busqueda = '') {
     const container = document.getElementById('consultas-list');
     try {
       const { data: consultas } = await supabaseClient.from('consultas').select('*').eq('usuarioid', this.currentUser.id).order('fecha', { ascending: false });
+      const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
+      const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
       
       if (!consultas) {
         container.innerHTML = '<p class="error-text">Error cargando consultas</p>';
@@ -399,10 +425,10 @@ async renderEstudios(busqueda = '') {
           <div class="card" onclick="app.navigate('consulta-detalle', {id: '${c.id}'})">
             <div class="card-header">
               <div class="card-icon">🏥</div>
-              <div class="card-title"><h3>${c.motivo || 'Consulta'}</h3><p>${c.fecha}</p></div>
+              <div class="card-title"><h3>${c.motivo || 'Consulta'}</h3><p>${this.formatFecha(c.fecha)}</p></div>
             </div>
             <div class="card-body">
-              ${c.especialidad ? `<span class="tag">${c.especialidad}</span>` : ''}
+              ${c.especialidad_id ? `<span class="tag">${espMap[c.especialidad_id] || 'Especialidad'}</span>` : ''}
               ${c.medico ? `<span class="tag">👨‍⚕️ ${c.medico}</span>` : ''}
             </div>
           </div>
@@ -598,7 +624,7 @@ async renderEstudios(busqueda = '') {
 
     document.getElementById('estudio-detalle-nombre').textContent = estudio.nombre;
     document.getElementById('estudio-detalle-tipo').textContent = espNombre + (tipoNombre ? ' - ' + tipoNombre : '');
-    document.getElementById('estudio-detalle-fecha').textContent = estudio.fecha;
+    document.getElementById('estudio-detalle-fecha').textContent = this.formatFecha(estudio.fecha);
     document.getElementById('estudio-detalle-lugar').textContent = estudio.lugar || '-';
     document.getElementById('estudio-detalle-medico').textContent = estudio.medico || '-';
     document.getElementById('estudio-detalle-resultado').textContent = estudio.resultado || 'Sin resultados';
@@ -731,7 +757,7 @@ async renderEstudios(busqueda = '') {
     const { data: consulta } = await supabaseClient.from('consultas').select('*').eq('id', numId).single();
     if (!consulta) return;
     
-    document.getElementById('consulta-detalle-fecha').textContent = consulta.fecha;
+    document.getElementById('consulta-detalle-fecha').textContent = this.formatFecha(consulta.fecha);
     document.getElementById('consulta-detalle-especialidad').textContent = consulta.especialidad || '-';
     document.getElementById('consulta-detalle-medico').textContent = consulta.medico || '-';
     document.getElementById('consulta-detalle-lugar').textContent = consulta.lugar || '-';
@@ -761,6 +787,11 @@ async renderEstudios(busqueda = '') {
       const estudios = await supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id);
       const consultas = await supabaseClient.from('consultas').select('*').eq('usuarioid', this.currentUser.id);
       
+      const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
+      const { data: tipos } = await supabaseClient.from('tipos_estudio').select('*').eq('usuarioid', this.currentUser.id);
+      const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
+      const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
+      
       const merged = [...(estudios.data || []).map(e => ({...e, tipo: 'estudio'})), ...(consultas.data || []).map(c => ({...c, tipo: 'consulta'}))].sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 
       let filtered = merged;
@@ -775,12 +806,19 @@ async renderEstudios(busqueda = '') {
         container.innerHTML = filtered.map(item => {
           const isConsulta = item.tipo === 'consulta';
           const title = item.nombre || item.motivo || 'Sin título';
+          let meta = '';
+          if (isConsulta) {
+            meta = item.especialidad_id ? espMap[item.especialidad_id] : '';
+          } else {
+            const parts = [item.especialidad_id ? espMap[item.especialidad_id] : '', item.tipo_estudio_id ? tipoMap[item.tipo_estudio_id] : ''].filter(Boolean);
+            meta = parts.join(' - ');
+          }
           return `
             <div class="timeline-item" onclick="app.navigate('${isConsulta ? 'consulta-detalle' : 'estudio-detalle'}', {id: '${item.id}'})">
               <div class="timeline-icon ${isConsulta ? 'consulta' : 'estudio'}">${isConsulta ? '🏥' : '📋'}</div>
               <div class="timeline-content">
                 <strong>${title}</strong>
-                <p>${item.fecha}</p>
+                <p>${this.formatFecha(item.fecha)}${meta ? ' • ' + meta : ''}</p>
                 ${item.diagnostico ? `<p class="diagnostico">${item.diagnostico}</p>` : ''}
               </div>
             </div>
@@ -822,7 +860,7 @@ async renderEstudios(busqueda = '') {
           <div class="note-card">
             <div class="note-header">
               <div class="note-title">${n.titulo || 'Sin título'}</div>
-              <div class="note-date">${n.fecha}</div>
+              <div class="note-date">${this.formatFecha(n.fecha)}</div>
             </div>
             <div class="note-content">${n.contenido}</div>
             <div class="note-actions">
@@ -1024,6 +1062,19 @@ async renderEstudios(busqueda = '') {
         (especialidades || []).map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
     }
     
+    // Cargar tipos de estudio
+    const { data: tipos } = await supabaseClient
+      .from('tipos_estudio')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    const tipoSelect = document.getElementById('reporte-tipo-estudio');
+    if (tipoSelect) {
+      tipoSelect.innerHTML = '<option value="">Todos</option>' + 
+        (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+    }
+    
     await this.generarReporte();
   },
   
@@ -1031,19 +1082,15 @@ async renderEstudios(busqueda = '') {
     const select = document.getElementById('reporte-tipo-estudio');
     if (!select) return;
     
-    const especialidadId = document.getElementById('reporte-especialidad')?.value;
-    select.innerHTML = '<option value="">Todos</option>';
+    const { data: tipos } = await supabaseClient
+      .from('tipos_estudio')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
     
-    if (especialidadId) {
-      const { data: tipos } = await supabaseClient
-        .from('tipos_estudio')
-        .select('*')
-        .eq('usuarioid', this.currentUser.id)
-        .order('nombre');
-      
-      select.innerHTML = '<option value="">Todos</option>' + 
-        (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
-    }
+    select.innerHTML = '<option value="">Todos</option>' + 
+      (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+  }
   },
 
   async generarReporte() {
@@ -1053,6 +1100,12 @@ async renderEstudios(busqueda = '') {
     const tipoEstudioId = document.getElementById('reporte-tipo-estudio').value;
     
     if (!this.currentUser || !this.currentUser.id) return;
+    
+    // Load map for display
+    const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
+    const { data: tipos } = await supabaseClient.from('tipos_estudio').select('*').eq('usuarioid', this.currentUser.id);
+    const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
+    const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
     
     let queryEstudios = supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id);
     let queryConsultas = supabaseClient.from('consultas').select('*').eq('usuarioid', this.currentUser.id);
@@ -1079,36 +1132,41 @@ async renderEstudios(busqueda = '') {
     if (filteredEstudios.length === 0) {
       estudiosList.innerHTML = '<p class="empty-text">No hay estudios en el período</p>';
     } else {
-      estudiosList.innerHTML = filteredEstudios.map(e => `
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">📋</div>
-            <div class="card-title"><h3>${e.nombre}</h3><p>${e.fecha}</p></div>
+      estudiosList.innerHTML = filteredEstudios.map(e => {
+        const meta = [e.especialidad_id ? espMap[e.especialidad_id] : '', e.tipo_estudio_id ? tipoMap[e.tipo_estudio_id] : ''].filter(Boolean).join(' - ');
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-icon">📋</div>
+              <div class="card-title"><h3>${e.nombre}</h3><p>${this.formatFecha(e.fecha)}${meta ? ' • ' + meta : ''}</p></div>
+            </div>
+            <div class="card-body">
+              ${e.lugar ? `<span class="tag">📍 ${e.lugar}</span>` : ''}
+              ${e.medico ? `<span class="tag">👨‍⚕️ ${e.medico}</span>` : ''}
+            </div>
           </div>
-          <div class="card-body">
-            <span class="tag">${this.getTipoLabel(e.tipo)}</span>
-            ${e.lugar ? `<span class="tag">📍 ${e.lugar}</span>` : ''}
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
     
     const consultasList = document.getElementById('report-consultas-list');
     if (filteredConsultas.length === 0) {
       consultasList.innerHTML = '<p class="empty-text">No hay consultas en el período</p>';
     } else {
-      consultasList.innerHTML = filteredConsultas.map(c => `
-        <div class="card">
-          <div class="card-header">
-            <div class="card-icon">🏥</div>
-            <div class="card-title"><h3>${c.motivo || 'Consulta'}</h3><p>${c.fecha}</p></div>
+      consultasList.innerHTML = filteredConsultas.map(c => {
+        const esp = c.especialidad_id ? espMap[c.especialidad_id] : '';
+        return `
+          <div class="card">
+            <div class="card-header">
+              <div class="card-icon">🏥</div>
+              <div class="card-title"><h3>${c.motivo || 'Consulta'}</h3><p>${this.formatFecha(c.fecha)}${esp ? ' • ' + esp : ''}</p></div>
+            </div>
+            <div class="card-body">
+              ${c.medico ? `<span class="tag">👨‍⚕️ ${c.medico}</span>` : ''}
+            </div>
           </div>
-          <div class="card-body">
-            ${c.especialidad ? `<span class="tag">${c.especialidad}</span>` : ''}
-            ${c.medico ? `<span class="tag">👨‍⚕️ ${c.medico}</span>` : ''}
-          </div>
-        </div>
-      `).join('');
+        `;
+      }).join('');
     }
   },
 
@@ -1155,6 +1213,10 @@ async renderEstudios(busqueda = '') {
       let y = 60;
       
       const { data: estudios } = await supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id).order('fecha', { ascending: false });
+      const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
+      const { data: tipos } = await supabaseClient.from('tipos_estudio').select('*').eq('usuarioid', this.currentUser.id);
+      const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
+      const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
       
       if (estudios && estudios.length > 0) {
         estudios.forEach(e => {
@@ -1163,14 +1225,17 @@ async renderEstudios(busqueda = '') {
             pageCount.current++;
             y = 40;
           }
-          const tipoLabel = this.getTipoLabel(e.tipo);
+          const meta = [e.especialidad_id ? espMap[e.especialidad_id] : '', e.tipo_estudio_id ? tipoMap[e.tipo_estudio_id] : '', e.lugar].filter(Boolean).join(' • ');
           doc.setFontSize(10);
           doc.setTextColor(0, 102, 153);
           doc.text(e.nombre, 15, y);
           doc.setTextColor(80, 80, 80);
           doc.setFontSize(8);
-          doc.text(`${e.fecha} | ${tipoLabel}${e.lugar ? ' | ' + e.lugar : ''}${e.medico ? ' | Dr. ' + e.medico : ''}`, 20, y + 5);
-          y += 12;
+          doc.text(`${this.formatFecha(e.fecha)}${meta ? ' | ' + meta : ''}${e.medico ? ' | Dr. ' + e.medico : ''}`, 20, y + 5);
+          if (e.resultado) {
+            doc.text('Resultado: ' + e.resultado.substring(0, 80), 20, y + 10);
+          }
+          y += 15;
         });
       } else {
         doc.setFontSize(9);
@@ -1196,13 +1261,20 @@ async renderEstudios(busqueda = '') {
             pageCount.current++;
             y = 40;
           }
+          const esp = c.especialidad_id ? espMap[c.especialidad_id] : '';
           doc.setFontSize(10);
           doc.setTextColor(0, 102, 153);
           doc.text(c.motivo, 15, y);
           doc.setTextColor(80, 80, 80);
           doc.setFontSize(8);
-          doc.text(`${c.fecha} | ${c.especialidad || 'Sin especialidad'}${c.medico ? ' | Dr. ' + c.medico : ''}`, 20, y + 5);
-          y += 12;
+          doc.text(`${this.formatFecha(c.fecha)}${esp ? ' | ' + esp : ''}${c.medico ? ' | Dr. ' + c.medico : ''}`, 20, y + 5);
+          if (c.diagnostico) {
+            doc.text('Diagnóstico: ' + c.diagnostico.substring(0, 80), 20, y + 10);
+          }
+          if (c.tratamiento) {
+            doc.text('Tratamiento: ' + c.tratamiento.substring(0, 80), 20, y + 15);
+          }
+          y += 18;
         });
       } else {
         doc.setFontSize(9);
