@@ -374,11 +374,16 @@ const app = {
     
     document.getElementById('estudio-form-titulo').textContent = id ? 'Editar Estudio' : 'Nuevo Estudio';
     
+    // Cargar especialidades en el select
+    await this.cargarEspecialidadesSelect();
+    
     if (id) {
       const { data: estudio } = await supabaseClient.from('estudios').select('*').eq('id', id).single();
       if (estudio) {
         document.getElementById('estudio-id').value = id;
-        document.getElementById('estudio-tipo').value = estudio.tipo;
+        document.getElementById('estudio-especialidad').value = estudio.especialidad_id || '';
+        await this.cargarTiposEstudio();
+        document.getElementById('estudio-tipo-estudio').value = estudio.tipo_estudio_id || '';
         document.getElementById('estudio-nombre').value = estudio.nombre;
         document.getElementById('estudio-fecha').value = estudio.fecha;
         document.getElementById('estudio-lugar').value = estudio.lugar || '';
@@ -408,6 +413,40 @@ const app = {
       document.getElementById('estudio-id').value = '';
       document.getElementById('estudio-fecha').value = new Date().toISOString().split('T')[0];
     }
+  },
+  
+  async cargarEspecialidadesSelect() {
+    const select = document.getElementById('estudio-especialidad');
+    if (!select) return;
+    
+    const { data: especialidades } = await supabaseClient
+      .from('especialidades')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    select.innerHTML = '<option value="">Seleccionar especialidad</option>' + 
+      (especialidades || []).map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+  },
+  
+  async cargarTiposEstudio() {
+    const select = document.getElementById('estudio-tipo-estudio');
+    if (!select) return;
+    
+    const especialidadId = document.getElementById('estudio-especialidad')?.value;
+    if (!especialidadId) {
+      select.innerHTML = '<option value="">Primero seleccione especialidad</option>';
+      return;
+    }
+    
+    const { data: tipos } = await supabaseClient
+      .from('tipos_estudio')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    select.innerHTML = '<option value="">Seleccionar tipo</option>' + 
+      (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
   },
 
   async guardarEstudio(e) {
@@ -446,7 +485,8 @@ const app = {
     
     const data = {
       usuarioid: this.currentUser.id,
-      tipo: document.getElementById('estudio-tipo').value,
+      especialidad_id: document.getElementById('estudio-especialidad').value || null,
+      tipo_estudio_id: document.getElementById('estudio-tipo-estudio').value || null,
       nombre: document.getElementById('estudio-nombre').value,
       fecha: document.getElementById('estudio-fecha').value,
       lugar: document.getElementById('estudio-lugar').value || null,
@@ -550,13 +590,26 @@ const app = {
   },
 
   async prepararFormularioConsulta(id = null) {
+    // Cargar especialidades
+    const { data: especialidades } = await supabaseClient
+      .from('especialidades')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    const espSelect = document.getElementById('consulta-especialidad');
+    if (espSelect) {
+      espSelect.innerHTML = '<option value="">Seleccionar</option>' + 
+        (especialidades || []).map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+    }
+    
     if (id) {
       const { data: consulta } = await supabaseClient.from('consultas').select('*').eq('id', parseInt(id)).single();
       if (consulta) {
         document.getElementById('consulta-form-titulo').textContent = 'Editar Consulta';
         document.getElementById('consulta-id').value = id;
         document.getElementById('consulta-fecha').value = consulta.fecha;
-        document.getElementById('consulta-especialidad').value = consulta.especialidad || '';
+        document.getElementById('consulta-especialidad').value = consulta.especialidad_id || '';
         document.getElementById('consulta-medico').value = consulta.medico || '';
         document.getElementById('consulta-lugar').value = consulta.lugar || '';
         document.getElementById('consulta-motivo').value = consulta.motivo || '';
@@ -586,7 +639,7 @@ const app = {
       motivo: document.getElementById('consulta-motivo').value || null,
       diagnostico: document.getElementById('consulta-diagnostico').value || null,
       medico: document.getElementById('consulta-medico').value || null,
-      especialidad: document.getElementById('consulta-especialidad').value || null,
+      especialidad_id: document.getElementById('consulta-especialidad').value || null,
       lugar: document.getElementById('consulta-lugar').value || null,
       tratamiento: document.getElementById('consulta-tratamiento').value || null,
       proximocontrol: document.getElementById('consulta-proximo').value || null
@@ -686,6 +739,41 @@ const app = {
   async renderConfiguracion() {
     if (!this.currentUser) return;
     try {
+      // Cargar especialidades
+      const { data: especialidades } = await supabaseClient
+        .from('especialidades')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id)
+        .order('nombre');
+      
+      const espList = document.getElementById('especialidades-list');
+      if (espList) {
+        espList.innerHTML = (especialidades || []).map(e => `
+          <div class="item-row">
+            <span>${e.nombre}</span>
+            <button class="btn-danger btn-xs" onclick="app.eliminarEspecialidad(${e.id})">✕</button>
+          </div>
+        `).join('') || '<p class="empty-text">No hay especialidades agregadas</p>';
+      }
+      
+      // Cargar tipos de estudio
+      const { data: tipos } = await supabaseClient
+        .from('tipos_estudio')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id)
+        .order('nombre');
+      
+      const tipoList = document.getElementById('tipos-estudio-list');
+      if (tipoList) {
+        tipoList.innerHTML = (tipos || []).map(t => `
+          <div class="item-row">
+            <span>${t.nombre}</span>
+            <button class="btn-danger btn-xs" onclick="app.eliminarTipoEstudio(${t.id})">✕</button>
+          </div>
+        `).join('') || '<p class="empty-text">No hay tipos de estudio agregados</p>';
+      }
+      
+      // Estadísticas
       const estudios = await supabaseClient.from('estudios').select('id', { count: 'exact', head: true }).eq('usuarioid', this.currentUser.id);
       const consultas = await supabaseClient.from('consultas').select('id', { count: 'exact', head: true }).eq('usuarioid', this.currentUser.id);
       
@@ -698,6 +786,62 @@ const app = {
       console.error('Error renderConfiguracion:', err);
     }
   },
+  
+  async agregarEspecialidad() {
+    const input = document.getElementById('new-especialidad');
+    const nombre = input?.value?.trim();
+    if (!nombre) return;
+    
+    try {
+      const { error } = await supabaseClient.from('especialidades').insert([{
+        usuarioid: this.currentUser.id,
+        nombre
+      }]);
+      if (error) throw error;
+      input.value = '';
+      this.renderConfiguracion();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  },
+  
+  async eliminarEspecialidad(id) {
+    if (!confirm('¿Eliminar esta especialidad?')) return;
+    try {
+      await supabaseClient.from('especialidades').delete().eq('id', id);
+      this.renderConfiguracion();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  },
+  
+  async agregarTipoEstudio() {
+    const input = document.getElementById('new-tipo-estudio');
+    const nombre = input?.value?.trim();
+    if (!nombre) return;
+    
+    try {
+      const { error } = await supabaseClient.from('tipos_estudio').insert([{
+        usuarioid: this.currentUser.id,
+        nombre
+      }]);
+      if (error) throw error;
+      input.value = '';
+      this.renderConfiguracion();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  },
+  
+  async eliminarTipoEstudio(id) {
+    if (!confirm('¿Eliminar este tipo de estudio?')) return;
+    try {
+      await supabaseClient.from('tipos_estudio').delete().eq('id', id);
+      this.renderConfiguracion();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  },
 
   async renderReportes() {
     const desdeInput = document.getElementById('reporte-desde');
@@ -708,17 +852,64 @@ const app = {
       desdeInput.value = firstDay.toISOString().split('T')[0];
       hastaInput.value = now.toISOString().split('T')[0];
     }
+    
+    // Cargar especialidades en filtro
+    const { data: especialidades } = await supabaseClient
+      .from('especialidades')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    const espSelect = document.getElementById('reporte-especialidad');
+    if (espSelect) {
+      espSelect.innerHTML = '<option value="">Todas</option>' + 
+        (especialidades || []).map(e => `<option value="${e.id}">${e.nombre}</option>`).join('');
+    }
+    
     await this.generarReporte();
+  },
+  
+  async cargarTiposReporte() {
+    const select = document.getElementById('reporte-tipo-estudio');
+    if (!select) return;
+    
+    const especialidadId = document.getElementById('reporte-especialidad')?.value;
+    select.innerHTML = '<option value="">Todos</option>';
+    
+    if (especialidadId) {
+      const { data: tipos } = await supabaseClient
+        .from('tipos_estudio')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id)
+        .order('nombre');
+      
+      select.innerHTML = '<option value="">Todos</option>' + 
+        (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
+    }
   },
 
   async generarReporte() {
     const desde = document.getElementById('reporte-desde').value;
     const hasta = document.getElementById('reporte-hasta').value;
+    const especialidadId = document.getElementById('reporte-especialidad').value;
+    const tipoEstudioId = document.getElementById('reporte-tipo-estudio').value;
     
     if (!this.currentUser || !this.currentUser.id) return;
     
-    const estudios = await supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id).gte('fecha', desde).lte('fecha', hasta);
-    const consultas = await supabaseClient.from('consultas').select('*').eq('usuarioid', this.currentUser.id).gte('fecha', desde).lte('fecha', hasta);
+    let queryEstudios = supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id);
+    let queryConsultas = supabaseClient.from('consultas').select('*').eq('usuarioid', this.currentUser.id);
+    
+    if (desde) queryEstudios = queryEstudios.gte('fecha', desde);
+    if (hasta) queryEstudios = queryEstudios.lte('fecha', hasta);
+    if (especialidadId) queryEstudios = queryEstudios.eq('especialidad_id', especialidadId);
+    if (tipoEstudioId) queryEstudios = queryEstudios.eq('tipo_estudio_id', tipoEstudioId);
+    
+    if (desde) queryConsultas = queryConsultas.gte('fecha', desde);
+    if (hasta) queryConsultas = queryConsultas.lte('fecha', hasta);
+    if (especialidadId) queryConsultas = queryConsultas.eq('especialidad_id', especialidadId);
+    
+    const estudios = await queryEstudios;
+    const consultas = await queryConsultas;
     
     const filteredEstudios = estudios.data || [];
     const filteredConsultas = consultas.data || [];

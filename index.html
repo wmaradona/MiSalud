@@ -78,7 +78,7 @@
           <span class="nav-icon">📊</span><span>Reportes</span>
         </a>
         <a href="#" class="nav-item" data-view="configuracion">
-          <span class="nav-icon">⚙️</span><span>Ajustes</span>
+          <span class="nav-icon">⚙️</span><span>Configuraciones</span>
         </a>
         <a href="#" class="nav-item logout" onclick="app.logout()">
           <span class="nav-icon">🚪</span><span>Cerrar Sesión</span>
@@ -173,24 +173,15 @@
           <div class="form-section">
             <h3>Datos del Estudio</h3>
             <div class="form-group">
+              <label>Especialidad *</label>
+              <select id="estudio-especialidad" required onchange="app.cargarTiposEstudio()">
+                <option value="">Seleccionar especialidad</option>
+              </select>
+            </div>
+            <div class="form-group">
               <label>Tipo de Estudio *</label>
-              <select id="estudio-tipo" required>
-                <option value="">Seleccionar tipo</option>
-                <option value="laboratorio">Laboratorio</option>
-                <option value="imagenes">Estudios de Imágenes</option>
-                <option value="ecografia">Ecografía</option>
-                <option value="radiografia">Radiografía</option>
-                <option value="tac">Tomografía (TAC)</option>
-                <option value="rmn">Resonancia (RMN)</option>
-                <option value="electrocardiograma">ECG</option>
-                <option value="espirometria">Espirometría</option>
-                <option value="densitometria">Densitometría</option>
-                <option value="mamografia">Mamografía</option>
-                <option value="oftalmologia">Oftalmología</option>
-                <option value="audiometria">Audiometría</option>
-                <option value="cardiologia">Cardiología</option>
-                <option value="neurologia">Neurología</option>
-                <option value="otro">Otro</option>
+              <select id="estudio-tipo-estudio" required>
+                <option value="">Primero seleccione especialidad</option>
               </select>
             </div>
             <div class="form-group">
@@ -280,17 +271,6 @@
                 <label>Especialidad</label>
                 <select id="consulta-especialidad">
                   <option value="">Seleccionar</option>
-                  <option value="Clínica Médica">Clínica Médica</option>
-                  <option value="Cardiología">Cardiología</option>
-                  <option value="Dermatología">Dermatología</option>
-                  <option value="Endocrinología">Endocrinología</option>
-                  <option value="Gastroenterología">Gastroenterología</option>
-                  <option value="Neurología">Neurología</option>
-                  <option value="Oftalmología">Oftalmología</option>
-                  <option value="Ortopedia">Ortopedia</option>
-                  <option value="Pediatría">Pediatría</option>
-                  <option value="Ginecología">Ginecología</option>
-                  <option value="Otro">Otro</option>
                 </select>
               </div>
             </div>
@@ -379,9 +359,27 @@
       <!-- Vista: Configuración -->
       <div id="view-configuracion" class="view">
         <div class="view-header">
-          <h2>Ajustes</h2>
+          <h2>Configuraciones</h2>
         </div>
         <div class="config-sections">
+          <div class="config-card">
+            <h3>Especialidades</h3>
+            <p class="config-desc">Administra las especialidades para tus consultas</p>
+            <div class="list-add">
+              <input type="text" id="new-especialidad" placeholder="Nueva especialidad">
+              <button class="btn-primary btn-sm" onclick="app.agregarEspecialidad()">Agregar</button>
+            </div>
+            <div id="especialidades-list" class="items-list"></div>
+          </div>
+          <div class="config-card">
+            <h3>Tipos de Estudio</h3>
+            <p class="config-desc">Administra los tipos de estudio disponibles</p>
+            <div class="list-add">
+              <input type="text" id="new-tipo-estudio" placeholder="Nuevo tipo de estudio">
+              <button class="btn-primary btn-sm" onclick="app.agregarTipoEstudio()">Agregar</button>
+            </div>
+            <div id="tipos-estudio-list" class="items-list"></div>
+          </div>
           <div class="config-card">
             <h3>📊 Mis Estadísticas</h3>
             <div class="stats-mini">
@@ -412,12 +410,26 @@
         </div>
         <div class="report-filters">
           <div class="form-group">
-            <label>Desde</label>
-            <input type="date" id="reporte-desde">
+            <label>Especialidad</label>
+            <select id="reporte-especialidad" onchange="app.cargarTiposReporte()">
+              <option value="">Todas</option>
+            </select>
           </div>
           <div class="form-group">
-            <label>Hasta</label>
-            <input type="date" id="reporte-hasta">
+            <label>Tipo de Estudio</label>
+            <select id="reporte-tipo-estudio">
+              <option value="">Todos</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Desde</label>
+              <input type="date" id="reporte-desde">
+            </div>
+            <div class="form-group">
+              <label>Hasta</label>
+              <input type="date" id="reporte-hasta">
+            </div>
           </div>
           <button class="btn-primary" onclick="app.generarReporte()">Generar Reporte</button>
         </div>
