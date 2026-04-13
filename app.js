@@ -286,16 +286,58 @@ const app = {
     }
   },
 
-  async renderEstudios(busqueda = '') {
+async renderEstudios(busqueda = '') {
+    // Cargar filtros de especialidades dinámicamente
+    const { data: especialidades } = await supabaseClient
+      .from('especialidades')
+      .select('*')
+      .eq('usuarioid', this.currentUser.id)
+      .order('nombre');
+    
+    const filtrosContainer = document.getElementById('estudios-filtros');
+    if (filtrosContainer && especialidades) {
+      filtrosContainer.innerHTML = '<button class="filtro-btn active" data-filtro="todos">Todos</button>' +
+        especificaciones.map(e => `<button class="filtro-btn" data-filtro="${e.id}">${e.nombre}</button>`).join('');
+      
+      // Re-attach event listeners
+      filtrosContainer.querySelectorAll('.filtro-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          filtrosContainer.querySelectorAll('.filtro-btn').forEach(b => b.classList.remove('active'));
+          btn.classList.add('active');
+          this.state.filtroEstudios = btn.dataset.filtro;
+          this.renderEstudios();
+        });
+      });
+    }
+    
+    if (!this.state.filtroEstudios) this.state.filtroEstudios = 'todos';
+    
     const container = document.getElementById('estudios-list');
     try {
-      let query = supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id);
+      let query = supabaseClient
+        .from('estudios')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id);
       
       if (this.state.filtroEstudios !== 'todos') {
-        query = query.eq('tipo', this.state.filtroEstudios);
+        query = query.eq('especialidad_id', this.state.filtroEstudios);
       }
       
       const { data: estudios } = await query.order('fecha', { ascending: false });
+      
+      // Cargar especialidades y tipos para mostrar nombres
+      const { data: especialidades } = await supabaseClient
+        .from('especialidades')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id);
+      
+      const { data: tipos } = await supabaseClient
+        .from('tipos_estudio')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id);
+      
+      const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
+      const tipoMap = (tipos || []).reduce((m, t) => { m[t.id] = t.nombre; return m; }, {});
       
       if (!estudios) {
         container.innerHTML = '<p class="error-text">Error cargando estudios</p>';
@@ -318,7 +360,8 @@ const app = {
               <div class="card-title"><h3>${e.nombre}</h3><p>${e.fecha}</p></div>
             </div>
             <div class="card-body">
-              <span class="tag">${this.getTipoLabel(e.tipo)}</span>
+              ${e.especialidad_id ? `<span class="tag">${espMap[e.especialidad_id] || 'Especialidad'}</span>` : ''}
+              ${e.tipo_estudio_id ? `<span class="tag">${tipoMap[e.tipo_estudio_id] || 'Tipo'}</span>` : ''}
               ${e.archivo ? '<span class="tag archivo-tag">📎 Adjunto</span>' : ''}
             </div>
           </div>
@@ -542,8 +585,19 @@ const app = {
     const { data: estudio } = await supabaseClient.from('estudios').select('*').eq('id', numId).single();
     if (!estudio) return;
 
+    // Cargar nombres de especialidad y tipo
+    let espNombre = '', tipoNombre = '';
+    if (estudio.especialidad_id) {
+      const { data: esp } = await supabaseClient.from('especialidades').select('nombre').eq('id', estudio.especialidad_id).single();
+      espNombre = esp?.nombre || '';
+    }
+    if (estudio.tipo_estudio_id) {
+      const { data: tipo } = await supabaseClient.from('tipos_estudio').select('nombre').eq('id', estudio.tipo_estudio_id).single();
+      tipoNombre = tipo?.nombre || '';
+    }
+
     document.getElementById('estudio-detalle-nombre').textContent = estudio.nombre;
-    document.getElementById('estudio-detalle-tipo').textContent = this.getTipoLabel(estudio.tipo);
+    document.getElementById('estudio-detalle-tipo').textContent = espNombre + (tipoNombre ? ' - ' + tipoNombre : '');
     document.getElementById('estudio-detalle-fecha').textContent = estudio.fecha;
     document.getElementById('estudio-detalle-lugar').textContent = estudio.lugar || '-';
     document.getElementById('estudio-detalle-medico').textContent = estudio.medico || '-';
