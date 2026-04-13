@@ -71,6 +71,9 @@
         <a href="#" class="nav-item" data-view="consultas">
           <span class="nav-icon">🏥</span><span>Consultas</span>
         </a>
+        <a href="#" class="nav-item" data-view="notas">
+          <span class="nav-icon">📝</span><span>Notas</span>
+        </a>
         <a href="#" class="nav-item" data-view="historial">
           <span class="nav-icon">📜</span><span>Historial</span>
         </a>
@@ -342,6 +345,46 @@
         <div class="consulta-detalle-section">
           <h3>Próximo Control</h3><p id="consulta-detalle-proximo"></p>
         </div>
+      </div>
+
+      <!-- Vista: Notas -->
+      <div id="view-notas" class="view">
+        <div class="view-header">
+          <h2>Notas</h2>
+          <button class="btn-primary" onclick="app.navigate('nota-form')">➕ Nueva Nota</button>
+        </div>
+        <div class="search-bar">
+          <input type="text" id="notas-search" placeholder="Buscar notas..." oninput="app.buscarNotas()">
+          <span class="search-icon">🔍</span>
+        </div>
+        <div id="notas-list" class="notes-grid"></div>
+      </div>
+
+      <!-- Vista: Nota Form -->
+      <div id="view-nota-form" class="view">
+        <div class="view-header">
+          <button class="btn-back" onclick="app.navigate('notas')">← Volver</button>
+          <h2 id="nota-form-titulo">Nueva Nota</h2>
+        </div>
+        <form id="nota-form" class="form-container" onsubmit="app.guardarNota(event)">
+          <input type="hidden" id="nota-id">
+          <div class="form-group">
+            <label>Título</label>
+            <input type="text" id="nota-titulo" placeholder="Título de la nota">
+          </div>
+          <div class="form-group">
+            <label>Fecha</label>
+            <input type="date" id="nota-fecha" required>
+          </div>
+          <div class="form-group">
+            <label>Contenido *</label>
+            <textarea id="nota-contenido" rows="8" placeholder="Escribe tu nota..." required></textarea>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn-primary">💾 Guardar Nota</button>
+            <button type="button" class="btn-secondary" onclick="app.navigate('notas')">Cancelar</button>
+          </div>
+        </form>
       </div>
 
       <!-- Vista: Historial -->

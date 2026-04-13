@@ -204,6 +204,12 @@ const app = {
       case 'consulta-detalle':
         this.prepararDetalleConsulta(params.id);
         break;
+      case 'notas':
+        this.renderNotas();
+        break;
+      case 'nota-form':
+        this.prepararFormularioNota(params.id);
+        break;
       case 'historial':
         this.renderHistorial();
         break;
@@ -734,6 +740,104 @@ const app = {
 
   buscarHistorial() {
     this.renderHistorial(document.getElementById('historial-search').value);
+  },
+
+  async renderNotas(busqueda = '') {
+    if (!this.currentUser) return;
+    try {
+      const { data: notas } = await supabaseClient
+        .from('notas')
+        .select('*')
+        .eq('usuarioid', this.currentUser.id)
+        .order('fecha', { ascending: false });
+      
+      let filtered = notas || [];
+      if (busqueda) {
+        const q = busqueda.toLowerCase();
+        filtered = filtered.filter(n => 
+          (n.titulo || '').toLowerCase().includes(q) || 
+          (n.contenido || '').toLowerCase().includes(q)
+        );
+      }
+      
+      const container = document.getElementById('notas-list');
+      if (filtered.length === 0) {
+        container.innerHTML = '<p class="empty-text">No hay notas</p>';
+      } else {
+        container.innerHTML = filtered.map(n => `
+          <div class="note-card">
+            <div class="note-header">
+              <div class="note-title">${n.titulo || 'Sin título'}</div>
+              <div class="note-date">${n.fecha}</div>
+            </div>
+            <div class="note-content">${n.contenido}</div>
+            <div class="note-actions">
+              <button class="btn-secondary btn-xs" onclick="app.navigate('nota-form', {id: '${n.id}'})">✏️</button>
+              <button class="btn-danger btn-xs" onclick="app.eliminarNota(${n.id})">🗑️</button>
+            </div>
+          </div>
+        `).join('');
+      }
+    } catch (err) {
+      console.error('Error renderNotas:', err);
+    }
+  },
+
+  buscarNotas() {
+    this.renderNotas(document.getElementById('notas-search').value);
+  },
+
+  async prepararFormularioNota(id = null) {
+    document.getElementById('nota-form-titulo').textContent = id ? 'Editar Nota' : 'Nueva Nota';
+    
+    if (id) {
+      const { data: nota } = await supabaseClient.from('notas').select('*').eq('id', id).single();
+      if (nota) {
+        document.getElementById('nota-id').value = id;
+        document.getElementById('nota-titulo').value = nota.titulo || '';
+        document.getElementById('nota-fecha').value = nota.fecha;
+        document.getElementById('nota-contenido').value = nota.contenido;
+      }
+    } else {
+      document.getElementById('nota-form').reset();
+      document.getElementById('nota-id').value = '';
+      document.getElementById('nota-fecha').value = new Date().toISOString().split('T')[0];
+    }
+  },
+
+  async guardarNota(e) {
+    e.preventDefault();
+    const id = document.getElementById('nota-id').value;
+    const data = {
+      usuarioid: this.currentUser.id,
+      titulo: document.getElementById('nota-titulo').value || null,
+      fecha: document.getElementById('nota-fecha').value,
+      contenido: document.getElementById('nota-contenido').value
+    };
+
+    try {
+      let result;
+      if (id) {
+        result = await supabaseClient.from('notas').update(data).eq('id', id);
+      } else {
+        result = await supabaseClient.from('notas').insert([data]);
+      }
+      
+      if (result.error) throw result.error;
+      this.navigate('notas');
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
+  },
+
+  async eliminarNota(id) {
+    if (!confirm('¿Eliminar esta nota?')) return;
+    try {
+      await supabaseClient.from('notas').delete().eq('id', id);
+      this.renderNotas();
+    } catch (err) {
+      alert('Error: ' + err.message);
+    }
   },
 
   async renderConfiguracion() {

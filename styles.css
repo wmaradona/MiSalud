@@ -896,3 +896,50 @@ body {
   margin-bottom: 15px;
   color: var(--text);
 }
+
+.notes-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 16px;
+  margin-top: 16px;
+}
+
+.note-card {
+  background: var(--surface);
+  border-radius: 12px;
+  padding: 16px;
+  border: 1px solid var(--border);
+}
+
+.note-card .note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.note-card .note-title {
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--primary);
+}
+
+.note-card .note-date {
+  font-size: 12px;
+  color: var(--text-light);
+}
+
+.note-card .note-content {
+  font-size: 14px;
+  color: var(--text);
+  white-space: pre-wrap;
+  margin-bottom: 12px;
+  max-height: 150px;
+  overflow-y: auto;
+}
+
+.note-card .note-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
