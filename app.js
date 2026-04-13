@@ -19,23 +19,36 @@ const app = {
   currentUser: null,
   state: { vistaActual: 'loading', filtroEstudios: 'todos' },
   SESSION_TIMEOUT_HOURS: 24,
+  sessionInterval: null,
 
   async init() {
     this.setupEventListeners();
     this.setupActivityMonitor();
+    this.startSessionMonitor();
     this.checkAuth();
   },
 
   setupActivityMonitor() {
     const resetActivity = () => {
-      if (this.currentUser && this.currentUser.id) {
-        localStorage.setItem('lastActivity', Date.now().toString());
-      }
+      localStorage.setItem('lastActivity', Date.now().toString());
     };
     ['mousedown', 'keydown', 'touchstart', 'scroll'].forEach(event => {
       document.addEventListener(event, resetActivity, { passive: true });
     });
     resetActivity();
+  },
+
+  startSessionMonitor() {
+    if (this.sessionInterval) clearInterval(this.sessionInterval);
+    this.sessionInterval = setInterval(() => {
+      const lastActivity = localStorage.getItem('lastActivity');
+      if (lastActivity) {
+        const hoursSinceActivity = (Date.now() - parseInt(lastActivity)) / (1000 * 60 * 60);
+        if (hoursSinceActivity > this.SESSION_TIMEOUT_HOURS) {
+          this.logout();
+        }
+      }
+    }, 60000);
   },
 
   checkAuth() {
@@ -159,6 +172,11 @@ const app = {
   logout() {
     this.currentUser = null;
     localStorage.removeItem('currentUser');
+    localStorage.removeItem('lastActivity');
+    if (this.sessionInterval) {
+      clearInterval(this.sessionInterval);
+      this.sessionInterval = null;
+    }
     this.hideApp();
     this.navigate('login');
   },
