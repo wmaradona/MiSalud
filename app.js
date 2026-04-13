@@ -1090,7 +1090,6 @@ async renderEstudios(busqueda = '') {
     
     select.innerHTML = '<option value="">Todos</option>' + 
       (tipos || []).map(t => `<option value="${t.id}">${t.nombre}</option>`).join('');
-  }
   },
 
   async generarReporte() {
@@ -1101,7 +1100,6 @@ async renderEstudios(busqueda = '') {
     
     if (!this.currentUser || !this.currentUser.id) return;
     
-    // Load map for display
     const { data: especialidades } = await supabaseClient.from('especialidades').select('*').eq('usuarioid', this.currentUser.id);
     const { data: tipos } = await supabaseClient.from('tipos_estudio').select('*').eq('usuarioid', this.currentUser.id);
     const espMap = (especialidades || []).reduce((m, e) => { m[e.id] = e.nombre; return m; }, {});
