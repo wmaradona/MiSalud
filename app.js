@@ -1206,9 +1206,9 @@ async renderEstudios(busqueda = '') {
       const pageCount = { current: 1 };
       const totalPages = { count: 1 };
       
-      const header = () => {
+      const header = async () => {
         doc.setFillColor(0, 102, 153);
-        doc.rect(0, 0, 210, 35, 'F');
+        doc.rect(0, 0, 210, 45, 'F');
         doc.setTextColor(255, 255, 255);
         doc.setFontSize(22);
         doc.text('Mi Salud', 15, 18);
@@ -1216,6 +1216,32 @@ async renderEstudios(busqueda = '') {
         doc.text('Historial Médico Personal', 15, 26);
         doc.setFontSize(8);
         doc.text(`Usuario: ${this.currentUser.nombre} (${this.currentUser.email})`, 15, 32);
+        
+        // Filtros aplicados
+        const desde = document.getElementById('reporte-desde').value;
+        const hasta = document.getElementById('reporte-hasta').value;
+        const especialidadId = document.getElementById('reporte-especialidad').value;
+        const tipoEstudioId = document.getElementById('reporte-tipo-estudio').value;
+        
+        let filtros = [];
+        if (desde || hasta) {
+          filtros.push('Fecha: ' + (desde ? this.formatFecha(desde) : 'inicio') + ' - ' + (hasta ? this.formatFecha(hasta) : 'hoy'));
+        }
+        
+        if (especialidadId) {
+          const { data: esp } = await supabaseClient.from('especialidades').select('nombre').eq('id', especialidadId).single();
+          if (esp?.nombre) filtros.push('Especialidad: ' + esp.nombre);
+        }
+        
+        if (tipoEstudioId) {
+          const { data: tipo } = await supabaseClient.from('tipos_estudio').select('nombre').eq('id', tipoEstudioId).single();
+          if (tipo?.nombre) filtros.push('Tipo: ' + tipo.nombre);
+        }
+        
+        if (filtros.length > 0) {
+          doc.setTextColor(200, 200, 200);
+          doc.text('Filtros: ' + filtros.join(' | '), 15, 40);
+        }
         doc.setTextColor(0, 0, 0);
       };
       
@@ -1231,7 +1257,7 @@ async renderEstudios(busqueda = '') {
       
       doc.header = header;
       doc.footer = footer;
-      header();
+      await header();
       
       doc.setFontSize(11);
       doc.setTextColor(0, 102, 153);
