@@ -1252,6 +1252,21 @@ async renderEstudios(busqueda = '') {
       const pageCount = { current: 1 };
       const totalPages = { count: 1 };
       
+      const wrapText = (doc, text, x, y, maxWidth = 170) => {
+        const lines = doc.splitTextToSize(text, maxWidth);
+        return lines.map(line => ({ text: line }));
+      };
+      
+      const checkPageBreak = (doc, y, margin = 15) => {
+        const pageHeight = doc.internal.pageSize.height;
+        if (y > pageHeight - margin) {
+          doc.addPage();
+          pageCount.current++;
+          return 40;
+        }
+        return y;
+      };
+      
       const header = async () => {
         doc.setFillColor(0, 102, 153);
         doc.rect(0, 0, 210, 45, 'F');
@@ -1321,22 +1336,26 @@ async renderEstudios(busqueda = '') {
       
       if (estudios && estudios.length > 0) {
         estudios.forEach(e => {
-          if (y > 260) {
-            doc.addPage();
-            pageCount.current++;
-            y = 40;
-          }
           const meta = [e.especialidad_id ? espMap[e.especialidad_id] : '', e.tipo_estudio_id ? tipoMap[e.tipo_estudio_id] : '', e.lugar].filter(Boolean).join(' • ');
+          
           doc.setFontSize(10);
           doc.setTextColor(0, 102, 153);
           doc.text(e.nombre, 15, y);
           doc.setTextColor(80, 80, 80);
           doc.setFontSize(8);
           doc.text(`${this.formatFecha(e.fecha)}${meta ? ' | ' + meta : ''}${e.medico ? ' | Dr. ' + e.medico : ''}`, 20, y + 5);
+          
+          y += 10;
           if (e.resultado) {
-            doc.text('Resultado: ' + e.resultado.substring(0, 80), 20, y + 10);
+            const resultLines = wrapText(doc, 'Resultado: ' + e.resultado, 20, y);
+            resultLines.forEach(line => {
+              y = checkPageBreak(doc, y);
+              doc.text(line.text, 20, y);
+              y += 4;
+            });
           }
-          y += 15;
+          
+          y += 5;
         });
       } else {
         doc.setFontSize(9);
@@ -1357,11 +1376,6 @@ async renderEstudios(busqueda = '') {
       
       if (consultas && consultas.length > 0) {
         consultas.forEach(c => {
-          if (y > 260) {
-            doc.addPage();
-            pageCount.current++;
-            y = 40;
-          }
           const esp = c.especialidad_id ? espMap[c.especialidad_id] : '';
           doc.setFontSize(10);
           doc.setTextColor(0, 102, 153);
@@ -1369,13 +1383,27 @@ async renderEstudios(busqueda = '') {
           doc.setTextColor(80, 80, 80);
           doc.setFontSize(8);
           doc.text(`${this.formatFecha(c.fecha)}${esp ? ' | ' + esp : ''}${c.medico ? ' | Dr. ' + c.medico : ''}`, 20, y + 5);
+          
+          y += 10;
           if (c.diagnostico) {
-            doc.text('Diagnóstico: ' + c.diagnostico.substring(0, 80), 20, y + 10);
+            const diagLines = wrapText(doc, 'Diagnóstico: ' + c.diagnostico, 20, y);
+            diagLines.forEach(line => {
+              y = checkPageBreak(doc, y);
+              doc.text(line.text, 20, y);
+              y += 4;
+            });
           }
           if (c.tratamiento) {
-            doc.text('Tratamiento: ' + c.tratamiento.substring(0, 80), 20, y + 15);
+            y += 2;
+            const tratLines = wrapText(doc, 'Tratamiento: ' + c.tratamiento, 20, y);
+            tratLines.forEach(line => {
+              y = checkPageBreak(doc, y);
+              doc.text(line.text, 20, y);
+              y += 4;
+            });
           }
-          y += 18;
+          
+          y += 8;
         });
       } else {
         doc.setFontSize(9);
