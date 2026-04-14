@@ -17,7 +17,7 @@ async function verifyPassword(password, hash) {
 
 const app = {
   currentUser: null,
-  state: { vistaActual: 'loading', filtroEstudios: 'todos' },
+  state: { vistaActual: 'loading', filtroEstudios: 'todos', archivosEliminar: [], archivosExistentes: [] },
   SESSION_TIMEOUT_HOURS: 24,
   sessionInterval: null,
 
@@ -372,6 +372,11 @@ async renderEstudios(busqueda = '') {
       
       const { data: estudios } = await query.order('fecha', { ascending: false });
       
+      // Obtener estudios con archivos en una consulta
+      const { data: archivosCounts } = await supabaseClient.from('estudio_archivos').select('estudio_id').eq('usuarioid', this.currentUser.id);
+      const estudiosConArchivos = new Set((archivosCounts || []).map(a => a.estudio_id));
+      (estudios || []).forEach(e => e.tiene_archivos = estudiosConArchivos.has(e.id));
+      
       // Cargar tipos para mostrar nombres
       const { data: tipos } = await supabaseClient
         .from('tipos_estudio')
@@ -398,13 +403,13 @@ async renderEstudios(busqueda = '') {
         container.innerHTML = filtered.map(e => `
           <div class="card" onclick="app.navigate('estudio-detalle', {id: '${e.id}'})">
             <div class="card-header">
-              <div class="card-icon">${e.archivo ? '📎' : '📋'}</div>
+              <div class="card-icon">${e.tiene_archivos ? '📎' : '📋'}</div>
               <div class="card-title"><h3>${e.nombre}</h3><p>${this.formatFecha(e.fecha)}</p></div>
             </div>
             <div class="card-body">
               ${e.especialidad_id ? `<span class="tag">${espMap[e.especialidad_id] || 'Especialidad'}</span>` : ''}
               ${e.tipo_estudio_id ? `<span class="tag">${tipoMap[e.tipo_estudio_id] || 'Tipo'}</span>` : ''}
-              ${e.archivo ? '<span class="tag archivo-tag">📎 Adjunto</span>' : ''}
+              ${e.tiene_archivos ? '<span class="tag archivo-tag">📎 Adjunto</span>' : ''}
             </div>
           </div>
         `).join('');
@@ -462,8 +467,10 @@ async renderEstudios(busqueda = '') {
   },
 
   async prepararFormularioEstudio(id = null) {
-    const archivoActual = document.getElementById('archivo-actual');
-    if (archivoActual) archivoActual.textContent = '';
+    this.state.archivosEliminar = [];
+    this.state.archivosExistentes = [];
+    const archivosActuales = document.getElementById('archivos-actuales');
+    if (archivosActuales) archivosActuales.innerHTML = '';
     
     document.getElementById('estudio-form-titulo').textContent = id ? 'Editar Estudio' : 'Nuevo Estudio';
     
@@ -484,21 +491,26 @@ async renderEstudios(busqueda = '') {
         document.getElementById('estudio-resultado').value = estudio.resultado || '';
         document.getElementById('estudio-observaciones').value = estudio.observaciones || '';
         
-        if (estudio.archivo) {
-          const ext = estudio.archivonombre?.split('.').pop().toLowerCase();
-          const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-          const archivoUrl = estudio.archivo;
-          
-          if (archivoActual) {
-            archivoActual.innerHTML = `
-              <div class="archivo-preview-container">
-                ${isImage 
-                  ? `<img src="${archivoUrl}" alt="Archivo" class="archivo-preview-img" onclick="window.open('${archivoUrl}', '_blank')"/>`
-                  : `<a href="${archivoUrl}" target="_blank" class="archivo-link">📎 ${estudio.archivonombre || 'Ver archivo'}</a>`
-                }
-              </div>
-            `;
-          }
+        // Cargar archivos existentes
+        const { data: archivos } = await supabaseClient.from('estudio_archivos').select('*').eq('estudio_id', id).eq('usuarioid', this.currentUser.id);
+        
+        // Guardar IDs para evitar duplicación
+        if (archivos) {
+          this.state.archivosExistentes = archivos.map(a => a.id);
+        }
+        
+        if (archivos && archivos.length > 0 && archivosActuales) {
+          archivosActuales.innerHTML = '<div class="archivoslista"><h4>Archivos cargados:</h4>' + 
+            archivos.map(a => {
+              const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(a.tipo);
+              return `<div class="archivoitem" data-archivo-id="${a.id}">
+                <span>${a.nombre}</span>
+                <div class="archivo-actions">
+                  <button type="button" class="btn-secondary btn-xs" onclick="window.open('${a.url}', '_blank')">👁️ Ver</button>
+                  <button type="button" class="btn-danger btn-xs" onclick="event.preventDefault(); app.eliminarArchivoEstudio(${a.id}, '${a.url}')">✕</button>
+                </div>
+              </div>`;
+            }).join('') + '</div>';
         }
       }
     } else {
@@ -550,31 +562,8 @@ async renderEstudios(busqueda = '') {
     submitBtn.disabled = true;
     
     const id = document.getElementById('estudio-id').value;
-    const fileInput = document.getElementById('estudio-archivo');
-    const archivoFile = fileInput?.files[0];
-    
-    let archivoUrl = null;
-    let archivonombre = null;
-    
-    if (archivoFile) {
-      try {
-        const fileName = `${Date.now()}-${archivoFile.name}`;
-        const { data: uploadData, error: uploadError } = await supabaseClient.storage
-          .from('archivos')
-          .upload(fileName, archivoFile);
-        
-        if (uploadError) throw uploadError;
-        
-        const { data: urlData } = supabaseClient.storage
-          .from('archivos')
-          .getPublicUrl(fileName);
-        
-        archivoUrl = urlData.publicUrl;
-        archivonombre = archivoFile.name;
-      } catch (err) {
-        console.error('Error uploading file:', err);
-      }
-    }
+    const fileInput = document.getElementById('estudio-archivos');
+    const newFiles = fileInput?.files ? Array.from(fileInput.files) : [];
     
     const data = {
       usuarioid: this.currentUser.id,
@@ -588,30 +577,77 @@ async renderEstudios(busqueda = '') {
       observaciones: document.getElementById('estudio-observaciones').value || null
     };
     
-    if (archivoUrl) {
-      data.archivo = archivoUrl;
-      data.archivonombre = archivonombre;
-    }
-
+    let estudioId = id;
+    
     try {
       let result;
       if (id) {
-        if (archivoUrl) {
-          const { data: oldEstudio } = await supabaseClient.from('estudios').select('archivo').eq('id', id).single();
-          if (oldEstudio?.archivo) {
-            try {
-              const urlParts = oldEstudio.archivo.split('/');
-              const oldFileName = decodeURIComponent(urlParts[urlParts.length - 1]);
-              await supabaseClient.storage.from('archivos').remove([oldFileName]);
-            } catch (e) {}
-          }
-        }
         result = await supabaseClient.from('estudios').update(data).eq('id', id);
+        estudioId = id;
       } else {
-        result = await supabaseClient.from('estudios').insert([data]);
+        const insertResult = await supabaseClient.from('estudios').insert([data]).select().single();
+        if (insertResult.error) throw insertResult.error;
+        estudioId = insertResult.data.id;
       }
       
-      if (result.error) throw result.error;
+      // Upload new files (only if not already in estudio_archivos)
+      for (let i = 0; i < newFiles.length; i++) {
+        const file = newFiles[i];
+        
+        // Check if this file already exists in the database
+        const { data: existingFiles } = await supabaseClient.from('estudio_archivos')
+          .select('id')
+          .eq('estudio_id', estudioId)
+          .eq('usuarioid', this.currentUser.id)
+          .eq('nombre', file.name);
+        
+        if (existingFiles && existingFiles.length > 0) {
+          continue;
+        }
+        try {
+          const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_');
+          const fileName = `${Date.now()}-${i}-${safeName}`;
+          const { data: uploadData, error: uploadError } = await supabaseClient.storage
+            .from('archivos')
+            .upload(fileName, file);
+          
+          if (uploadError) throw uploadError;
+          
+          const { data: urlData } = supabaseClient.storage
+            .from('archivos')
+            .getPublicUrl(fileName);
+          
+          const ext = file.name.split('.').pop().toLowerCase();
+          await supabaseClient.from('estudio_archivos').insert([{
+            estudio_id: estudioId,
+            usuarioid: this.currentUser.id,
+            nombre: file.name,
+            url: urlData.publicUrl,
+            tipo: ext
+          }]);
+        } catch (err) {
+          console.error('Error uploading file:', err);
+        }
+      }
+      
+      // Eliminar archivos marcados para borrar
+      for (const arch of this.state.archivosEliminar) {
+        try {
+          const urlParts = arch.url.split('/');
+          const fileName = decodeURIComponent(urlParts[urlParts.length - 1]);
+          await supabaseClient.storage.from('archivos').remove([fileName]);
+          await supabaseClient.from('estudio_archivos').delete().eq('id', arch.id).eq('usuarioid', this.currentUser.id);
+        } catch (err) {
+          console.error('Error deleting file:', err);
+        }
+      }
+      
+      // Limpiar lista de archivos a eliminar
+      this.state.archivosEliminar = [];
+      this.state.archivosExistentes = [];
+      
+      // Limpiar input de archivos
+      if (fileInput) fileInput.value = '';
       
       this.navigate('estudios');
     } catch (err) {
@@ -649,18 +685,16 @@ async renderEstudios(busqueda = '') {
     document.getElementById('estudio-detalle-observaciones').textContent = estudio.observaciones || 'Sin observaciones';
 
     const archivoContainer = document.getElementById('estudio-detalle-archivo');
-    if (estudio.archivo && archivoContainer) {
-      const ext = estudio.archivonombre?.split('.').pop().toLowerCase();
-      const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-      archivoContainer.innerHTML = `
-        <div class="archivo-section">
-          <h3>Archivo Adjunto</h3>
-          ${isImage 
-            ? `<img src="${estudio.archivo}" alt="Archivo" class="archivo-preview-img" onclick="window.open('${estudio.archivo}', '_blank')"/>`
-            : `<a href="${estudio.archivo}" target="_blank" class="archivo-link">📎 ${estudio.archivonombre || 'Ver archivo'}</a>`
-          }
-        </div>
-      `;
+    const { data: archivos } = await supabaseClient.from('estudio_archivos').select('*').eq('estudio_id', numId).eq('usuarioid', this.currentUser.id);
+    
+    if (archivos && archivos.length > 0 && archivoContainer) {
+      archivoContainer.innerHTML = '<div class="archivos-section"><h3>Archivos Adjuntos</h3><div class="archivos-grid">' + 
+        archivos.map(a => `
+          <div class="archivo-card">
+            <span>${a.nombre}</span>
+            <button class="btn-secondary btn-xs" onclick="window.open('${a.url}', '_blank')">👁️ Ver</button>
+          </div>
+        `).join('') + '</div></div>';
     } else if (archivoContainer) {
       archivoContainer.innerHTML = '';
     }
@@ -669,21 +703,33 @@ async renderEstudios(busqueda = '') {
     document.getElementById('btn-eliminar-estudio').onclick = () => this.eliminarEstudio(numId);
   },
 
+  async eliminarArchivoEstudio(archivoId, archivoUrl) {
+    if (!confirm('¿Eliminar este archivo?')) return;
+    
+    // Marcar archivo para eliminar al guardar
+    this.state.archivosEliminar.push({ id: archivoId, url: archivoUrl });
+    
+    // Ocultar de la vista (se eliminará al guardar)
+    const archivoItem = document.querySelector(`[data-archivo-id="${archivoId}"]`);
+    if (archivoItem) {
+      archivoItem.style.display = 'none';
+    }
+  },
+
   async eliminarEstudio(id) {
-    if (confirm('¿Eliminar este estudio?')) {
+    if (confirm('¿Eliminar este estudio y todos sus archivos?')) {
       try {
-        const { data: estudio } = await supabaseClient.from('estudios').select('*').eq('id', id).single();
+        const { data: archivos } = await supabaseClient.from('estudio_archivos').select('*').eq('estudio_id', id).eq('usuarioid', this.currentUser.id);
         
-        if (estudio?.archivo) {
+        for (const archivo of archivos || []) {
           try {
-            const urlParts = estudio.archivo.split('/');
+            const urlParts = archivo.url.split('/');
             const fileName = decodeURIComponent(urlParts[urlParts.length - 1]);
             await supabaseClient.storage.from('archivos').remove([fileName]);
-          } catch (e) {
-            console.log('File delete skipped');
-          }
+          } catch (e) {}
         }
         
+        await supabaseClient.from('estudio_archivos').delete().eq('estudio_id', id).eq('usuarioid', this.currentUser.id);
         const result = await supabaseClient.from('estudios').delete().eq('id', id);
         if (result.error) throw result.error;
         this.navigate('estudios');

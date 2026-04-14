@@ -214,9 +214,9 @@
               <textarea id="estudio-resultado" rows="6" placeholder="Ingresa los resultados..."></textarea>
             </div>
             <div class="form-group">
-              <label>Archivo (PDF o Imagen)</label>
-              <input type="file" id="estudio-archivo" accept="image/*,.pdf" capture="environment">
-              <div id="archivo-actual" class="archivo-actual"></div>
+              <label>Archivos (PDF o Imagen) - Puede seleccionar varios</label>
+              <input type="file" id="estudio-archivos" accept="image/*,.pdf" capture="environment" multiple>
+              <div id="archivos-actuales" class="archivos-actuales"></div>
             </div>
             <div class="form-group">
               <label>Observaciones</label>
@@ -440,7 +440,7 @@
           <div class="config-card">
             <h3>ℹ️ Acerca de</h3>
             <p><strong>Usuario:</strong> <span id="config-usuario"></span></p>
-            <p><strong>Versión:</strong> 4.0.0</p>
+            <p><strong>Versión:</strong> 5.0.0</p>
             <p><strong>Backend:</strong> Supabase (Cloud)</p>
             <p class="about-text">Cada usuario gestiona sus propios datos de forma privada.</p>
           </div>
