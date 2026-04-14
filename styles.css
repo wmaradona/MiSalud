@@ -356,6 +356,8 @@ body {
 .action-icon.blue { background: rgba(37, 99, 235, 0.1); }
 .action-icon.green { background: rgba(16, 185, 129, 0.1); }
 .action-icon.orange { background: rgba(245, 158, 11, 0.1); }
+.action-icon.purple { background: rgba(139, 92, 246, 0.1); }
+.action-icon.gray { background: rgba(107, 114, 128, 0.1); }
 
 .recent-section {
   margin-bottom: 30px;
