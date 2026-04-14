@@ -1022,6 +1022,13 @@ async renderEstudios(busqueda = '') {
   async eliminarEspecialidad(id) {
     if (!confirm('¿Eliminar esta especialidad?')) return;
     try {
+      const { data: estudios } = await supabaseClient.from('estudios').select('id').eq('especialidad_id', id);
+      const { data: consultas } = await supabaseClient.from('consultas').select('id').eq('especialidad_id', id);
+      
+      if ((estudios?.length || 0) > 0 || (consultas?.length || 0) > 0) {
+        alert('No se puede eliminar: está siendo usada en estudios o consultas.');
+        return;
+      }
       await supabaseClient.from('especialidades').delete().eq('id', id);
       this.renderConfiguracion();
     } catch (err) {
@@ -1050,6 +1057,12 @@ async renderEstudios(busqueda = '') {
   async eliminarTipoEstudio(id) {
     if (!confirm('¿Eliminar este tipo de estudio?')) return;
     try {
+      const { data: estudios } = await supabaseClient.from('estudios').select('id').eq('tipo_estudio_id', id);
+      
+      if ((estudios?.length || 0) > 0) {
+        alert('No se puede eliminar: está siendo usado en estudios.');
+        return;
+      }
       await supabaseClient.from('tipos_estudio').delete().eq('id', id);
       this.renderConfiguracion();
     } catch (err) {
