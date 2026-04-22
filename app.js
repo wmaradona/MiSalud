@@ -17,10 +17,16 @@ const app = {
     this.startSessionMonitor();
     
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
-      if (event === 'SIGNED_IN' && session) {
+      console.log('auth state change:', event, session?.user?.email);
+      
+      if (event === 'SIGNED_IN' && session?.user) {
         await this.onLoginSuccess(session);
       } else if (event === 'SIGNED_OUT') {
-        this.logout();
+        // Only logout if we have a current user
+        if (this.currentUser) {
+          this.currentUser = null;
+          this.hideApp();
+        }
       }
     });
     
@@ -197,6 +203,11 @@ const app = {
   logout() {
     console.log('logout called');
     
+    if (!this.currentUser) {
+      this.navigate('login');
+      return;
+    }
+    
     this.currentUser = null;
     localStorage.removeItem('currentUser');
     localStorage.removeItem('lastActivity');
@@ -209,12 +220,12 @@ const app = {
     supabaseClient.auth.signOut().then(() => {
       console.log('signOut completed');
       this.hideApp();
-      this.navigate('login');
     }).catch(err => {
       console.error('signOut error:', err);
       this.hideApp();
-      this.navigate('login');
     });
+    
+    this.navigate('login');
   },
 
   navigate(vista, params = {}) {
