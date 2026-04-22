@@ -195,16 +195,26 @@ const app = {
   },
 
   logout() {
-    supabaseClient.auth.signOut();
+    console.log('logout called');
+    
     this.currentUser = null;
     localStorage.removeItem('currentUser');
     localStorage.removeItem('lastActivity');
+    
     if (this.sessionInterval) {
       clearInterval(this.sessionInterval);
       this.sessionInterval = null;
     }
-    this.hideApp();
-    this.navigate('login');
+    
+    supabaseClient.auth.signOut().then(() => {
+      console.log('signOut completed');
+      this.hideApp();
+      this.navigate('login');
+    }).catch(err => {
+      console.error('signOut error:', err);
+      this.hideApp();
+      this.navigate('login');
+    });
   },
 
   navigate(vista, params = {}) {
