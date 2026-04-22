@@ -19,13 +19,21 @@ const app = {
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
       console.log('auth state change:', event, session?.user?.email);
       
+      // Prevent processing if we're in the middle of logout
+      if (this._isLoggingOut) {
+        console.log('Skipping auth event during logout');
+        return;
+      }
+      
       if (event === 'SIGNED_IN' && session?.user) {
         await this.onLoginSuccess(session);
       } else if (event === 'SIGNED_OUT') {
-        // Only logout if we have a current user
         if (this.currentUser) {
+          this._isLoggingOut = true;
           this.currentUser = null;
           this.hideApp();
+          this.navigate('login');
+          this._isLoggingOut = false;
         }
       }
     });
@@ -57,10 +65,14 @@ const app = {
   },
 
   async checkAuth() {
+    // Don't check auth during logout
+    if (this._isLoggingOut) {
+      console.log('Skipping checkAuth during logout');
+      return;
+    }
+    
     try {
       const result = await supabaseClient.auth.getSession();
-      console.log('getSession result:', result);
-      
       const session = result.data?.session;
       
       if (session && session.user) {
@@ -85,6 +97,12 @@ const app = {
 
   async onLoginSuccess(session) {
     console.log('onLoginSuccess called with:', session);
+    
+    // Don't process login during logout
+    if (this._isLoggingOut) {
+      console.log('Skipping onLoginSuccess during logout');
+      return;
+    }
     
     if (!session || !session.user) {
       console.log('No session or user in onLoginSuccess');
@@ -208,6 +226,7 @@ const app = {
       return;
     }
     
+    this._isLoggingOut = true;
     this.currentUser = null;
     localStorage.removeItem('currentUser');
     localStorage.removeItem('lastActivity');
@@ -217,15 +236,16 @@ const app = {
       this.sessionInterval = null;
     }
     
-    supabaseClient.auth.signOut().then(() => {
-      console.log('signOut completed');
-      this.hideApp();
-    }).catch(err => {
+    supabaseClient.auth.signOut().catch(err => {
       console.error('signOut error:', err);
-      this.hideApp();
     });
     
+    this.hideApp();
     this.navigate('login');
+    
+    setTimeout(() => {
+      this._isLoggingOut = false;
+    }, 1000);
   },
 
   navigate(vista, params = {}) {
@@ -327,6 +347,12 @@ const app = {
   },
 
   async renderInicio() {
+    if (!this.currentUser?.id) {
+      console.log('renderInicio called without user, redirecting to login');
+      this.navigate('login');
+      return;
+    }
+    
     document.getElementById('user-nombre').textContent = this.currentUser?.nombre || 'Usuario';
     try {
       const estudios = await supabaseClient.from('estudios').select('*').eq('usuarioid', this.currentUser.id).order('fecha', { ascending: false });
