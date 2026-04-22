@@ -708,6 +708,13 @@ body {
   text-align: center;
 }
 
+.auth-success {
+  color: var(--success);
+  font-size: 13px;
+  margin-bottom: 12px;
+  text-align: center;
+}
+
 @media (max-width: 768px) {
   #app {
     flex-direction: column;

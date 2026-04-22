@@ -34,6 +34,17 @@
             </div>
             <div id="login-error" class="auth-error"></div>
             <button type="submit" class="btn-primary btn-block">Iniciar Sesión</button>
+            <button type="button" class="btn-link" onclick="app.mostrarRecovery()">¿Olvidaste tu contraseña?</button>
+          </form>
+          <form id="recovery-form" class="auth-form" style="display:none" onsubmit="app.handleRecovery(event)">
+            <div class="form-group">
+              <label>Email</label>
+              <input type="email" id="recovery-email" required placeholder="tu@email.com">
+            </div>
+            <div id="recovery-error" class="auth-error"></div>
+            <div id="recovery-success" class="auth-success"></div>
+            <button type="submit" class="btn-primary btn-block">Enviar Enlace de Recuperación</button>
+            <button type="button" class="btn-link" onclick="app.mostrarLogin()">Volver a Iniciar Sesión</button>
           </form>
           <form id="register-form" class="auth-form" style="display:none" onsubmit="app.handleRegister(event)">
             <div class="form-group">
@@ -49,6 +60,7 @@
               <input type="password" id="register-password" required placeholder="••••••••" minlength="6">
             </div>
             <div id="register-error" class="auth-error"></div>
+            <div id="register-success" class="auth-success"></div>
             <button type="submit" class="btn-primary btn-block">Crear Cuenta</button>
           </form>
         </div>

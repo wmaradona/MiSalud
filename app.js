@@ -4,19 +4,9 @@ const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZ
 const { createClient } = supabase;
 const supabaseClient = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-async function hashPassword(password) {
-  const msgBuffer = new TextEncoder().encode(password);
-  const hashBuffer = await crypto.subtle.digest('SHA-256', msgBuffer);
-  return Array.from(new Uint8Array(hashBuffer)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function verifyPassword(password, hash) {
-  const passwordHash = await hashPassword(password);
-  return passwordHash === hash;
-}
-
 const app = {
   currentUser: null,
+  auth: null,
   state: { vistaActual: 'loading', filtroEstudios: 'todos', archivosEliminar: [], archivosExistentes: [] },
   SESSION_TIMEOUT_HOURS: 24,
   sessionInterval: null,
@@ -25,6 +15,15 @@ const app = {
     this.setupEventListeners();
     this.setupActivityMonitor();
     this.startSessionMonitor();
+    
+    supabaseClient.auth.onAuthStateChange(async (event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        await this.onLoginSuccess(session);
+      } else if (event === 'SIGNED_OUT') {
+        this.logout();
+      }
+    });
+    
     this.checkAuth();
   },
 
@@ -51,75 +50,78 @@ const app = {
     }, 60000);
   },
 
-  checkAuth() {
-    const savedUser = localStorage.getItem('currentUser');
-    const lastActivity = localStorage.getItem('lastActivity');
-    
-    if (savedUser && lastActivity) {
-      const hoursSinceActivity = (Date.now() - parseInt(lastActivity)) / (1000 * 60 * 60);
-      if (hoursSinceActivity > this.SESSION_TIMEOUT_HOURS) {
-        this.logout();
+  async checkAuth() {
+    try {
+      const result = await supabaseClient.auth.getSession();
+      console.log('getSession result:', result);
+      
+      const session = result.data?.session;
+      
+      if (session && session.user) {
+        await this.onLoginSuccess(session);
         return;
       }
-    }
-    
-    if (savedUser) {
-      try {
-        this.currentUser = JSON.parse(savedUser);
-        if (this.currentUser && this.currentUser.id) {
-          this.showApp();
-          this.navigate('inicio');
+      
+      const lastActivity = localStorage.getItem('lastActivity');
+      if (lastActivity) {
+        const hoursSinceActivity = (Date.now() - parseInt(lastActivity)) / (1000 * 60 * 60);
+        if (hoursSinceActivity > this.SESSION_TIMEOUT_HOURS) {
+          this.logout();
           return;
         }
-      } catch (e) {}
+      }
+    } catch (err) {
+      console.error('checkAuth error:', err);
     }
+    
     this.navigate('login');
+  },
+
+  async onLoginSuccess(session) {
+    console.log('onLoginSuccess called with:', session);
+    
+    if (!session || !session.user) {
+      console.log('No session or user in onLoginSuccess');
+      return;
+    }
+    
+    const user = session.user;
+    
+    const { data: usuario } = await supabaseClient
+      .from('usuarios')
+      .select('*')
+      .eq('email', user.email)
+      .single();
+    
+    this.currentUser = { 
+      id: usuario?.id || user.id, 
+      email: user.email, 
+      nombre: usuario?.nombre || user.email 
+    };
+    
+    localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
+    localStorage.setItem('lastActivity', Date.now().toString());
+    
+    this.showApp();
+    this.navigate('inicio');
   },
 
   async register(email, password, nombre) {
     try {
-      console.log('Register attempt:', email, nombre);
-      const { data: existing, error: checkError } = await supabaseClient
-        .from('usuarios')
-        .select('id')
-        .eq('email', email);
+      const { data, error } = await supabaseClient.auth.signUp({
+        email,
+        password,
+        options: { data: { nombre } }
+      });
       
-      if (checkError) {
-        console.error('Check error:', checkError);
-        throw checkError;
-      }
-      
-      if (existing && existing.length > 0) {
-        return { success: false, error: 'El email ya está registrado' };
-      }
-      
-      const passwordHash = await hashPassword(password);
-      console.log('Password hash:', passwordHash);
-      
-      const { data, error } = await supabaseClient
-        .from('usuarios')
-        .insert([{
-          email,
-          nombre,
-          password: passwordHash
-        }]);
-      
-      console.log('Insert result:', data, error);
       if (error) throw error;
       
-      const { data: newUser } = await supabaseClient
-        .from('usuarios')
-        .select('*')
-        .eq('email', email)
-        .single();
+      if (!data.session) {
+        return { success: true, pending: true, message: 'Revisa tu email para confirmar tu cuenta' };
+      }
       
-      this.currentUser = { 
-        id: newUser.id, 
-        email: newUser.email, 
-        nombre: newUser.nombre 
-      };
-      localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-      return { success: true, id: newUser.id };
+      await this.onLoginSuccess(data);
+      return { success: true };
     } catch (err) {
       return { success: false, error: err.message };
     }
@@ -127,49 +129,73 @@ const app = {
 
   async login(email, password) {
     try {
-      console.log('Login attempt:', email);
-      const { data, error } = await supabaseClient
-        .from('usuarios')
-        .select('*')
-        .eq('email', email);
+      const { data, error } = await supabaseClient.auth.signInWithPassword({
+        email,
+        password
+      });
       
       if (error) {
-        console.error('Login error:', error);
+        if (error.message.includes('Invalid login credentials')) {
+          return { success: false, error: 'Email o contraseña incorrectos' };
+        }
         throw error;
       }
       
-      console.log('User data:', data);
-      
-      if (!data || data.length === 0) {
-        return { success: false, error: 'Usuario no encontrado' };
-      }
-      
-      const usuario = data[0];
-      if (!usuario.password) {
-        return { success: false, error: 'Usuario sin contraseña registrada' };
-      }
-      
-      const passwordValida = await verifyPassword(password, usuario.password);
-      
-      if (!passwordValida) {
-        return { success: false, error: 'Contraseña incorrecta' };
-      }
-      
-      this.currentUser = { 
-        id: usuario.id, 
-        email: usuario.email, 
-        nombre: usuario.nombre 
-      };
-      localStorage.setItem('currentUser', JSON.stringify(this.currentUser));
-      console.log('Login success:', this.currentUser);
-      return { success: true, usuario: this.currentUser };
+      await this.onLoginSuccess(data);
+      return { success: true };
     } catch (err) {
       console.error('Login exception:', err);
       return { success: false, error: err.message };
     }
   },
 
+  async resetPassword(email) {
+    try {
+      const { error } = await supabaseClient.auth.resetPasswordForEmail(email, {
+        redirectTo: window.location.origin
+      });
+      
+      if (error) throw error;
+      
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: err.message };
+    }
+  },
+
+  mostrarRecovery() {
+    document.getElementById('login-form').style.display = 'none';
+    document.getElementById('recovery-form').style.display = 'block';
+    document.getElementById('register-form').style.display = 'none';
+    document.getElementById('recovery-error').textContent = '';
+    document.getElementById('recovery-success').textContent = '';
+  },
+
+  mostrarLogin() {
+    document.getElementById('login-form').style.display = 'block';
+    document.getElementById('recovery-form').style.display = 'none';
+    document.getElementById('login-error').textContent = '';
+  },
+
+  handleRecovery(e) {
+    e.preventDefault();
+    const email = document.getElementById('recovery-email').value;
+    document.getElementById('recovery-error').textContent = 'Enviando...';
+    document.getElementById('recovery-success').textContent = '';
+    
+    this.resetPassword(email).then(result => {
+      if (result.success) {
+        document.getElementById('recovery-error').textContent = '';
+        document.getElementById('recovery-success').textContent = 'Se envió un enlace de recuperación a tu email';
+      } else {
+        document.getElementById('recovery-error').textContent = result.error;
+        document.getElementById('recovery-success').textContent = '';
+      }
+    });
+  },
+
   logout() {
+    supabaseClient.auth.signOut();
     this.currentUser = null;
     localStorage.removeItem('currentUser');
     localStorage.removeItem('lastActivity');
@@ -1429,8 +1455,6 @@ async renderEstudios(busqueda = '') {
       const result = await this.login(email, password);
       if (result.success && this.currentUser && this.currentUser.id) {
         document.getElementById('login-error').textContent = '';
-        this.showApp();
-        this.navigate('inicio');
       } else {
         document.getElementById('login-error').textContent = result.error || 'Credenciales inválidas';
       }
@@ -1447,10 +1471,11 @@ async renderEstudios(busqueda = '') {
     document.getElementById('register-error').textContent = 'Registrando...';
     try {
       const result = await this.register(email, password, nombre);
-      if (result.success && this.currentUser && this.currentUser.id) {
+      if (result.success && result.pending) {
         document.getElementById('register-error').textContent = '';
-        this.showApp();
-        this.navigate('inicio');
+        document.getElementById('register-success').textContent = result.message || 'Revisa tu email para confirmar tu cuenta';
+      } else if (result.success && this.currentUser && this.currentUser.id) {
+        document.getElementById('register-error').textContent = '';
       } else {
         document.getElementById('register-error').textContent = result.error || 'Error al registrar';
         this.currentUser = null;
