@@ -19,22 +19,12 @@ const app = {
     supabaseClient.auth.onAuthStateChange(async (event, session) => {
       console.log('auth state change:', event, session?.user?.email);
       
-      // Prevent processing if we're in the middle of logout
-      if (this._isLoggingOut) {
-        console.log('Skipping auth event during logout');
-        return;
-      }
-      
-      if (event === 'SIGNED_IN' && session?.user) {
-        await this.onLoginSuccess(session);
-      } else if (event === 'SIGNED_OUT') {
-        if (this.currentUser) {
-          this._isLoggingOut = true;
-          this.currentUser = null;
-          this.hideApp();
-          this.navigate('login');
-          this._isLoggingOut = false;
-        }
+      // Only handle SIGNED_OUT events from Supabase (not from our code)
+      if (event === 'SIGNED_OUT' && !this._isLoggingOut) {
+        console.log('External sign out detected, cleaning up');
+        this.currentUser = null;
+        this.hideApp();
+        this.navigate('login');
       }
     });
     
@@ -95,17 +85,17 @@ const app = {
     this.navigate('login');
   },
 
-  async onLoginSuccess(session) {
+async onLoginSuccess(session) {
     console.log('onLoginSuccess called with:', session);
-    
-    // Don't process login during logout
-    if (this._isLoggingOut) {
-      console.log('Skipping onLoginSuccess during logout');
-      return;
-    }
     
     if (!session || !session.user) {
       console.log('No session or user in onLoginSuccess');
+      return;
+    }
+    
+    // If we already have a current user and it's the same, don't process again
+    if (this.currentUser && this.currentUser.id && this.currentUser.email === session.user.email) {
+      console.log('Already logged in as same user, skipping onLoginSuccess');
       return;
     }
     
