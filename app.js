@@ -8,7 +8,7 @@ const app = {
   currentUser: null,
   auth: null,
   state: { vistaActual: 'loading', filtroEstudios: 'todos', archivosEliminar: [], archivosExistentes: [] },
-  SESSION_TIMEOUT_HOURS: 24,
+  SESSION_TIMEOUT_HOURS: 8,
   sessionInterval: null,
 
   async init() {
@@ -206,6 +206,49 @@ async onLoginSuccess(session) {
         document.getElementById('recovery-success').textContent = '';
       }
     });
+  },
+
+  async handleChangePassword(e) {
+    e.preventDefault();
+    
+    const currentPassword = document.getElementById('current-password').value;
+    const newPassword = document.getElementById('new-password').value;
+    const confirmPassword = document.getElementById('confirm-password').value;
+    const errorEl = document.getElementById('password-change-error');
+    const successEl = document.getElementById('password-change-success');
+    
+    errorEl.textContent = '';
+    successEl.textContent = '';
+    
+    if (newPassword !== confirmPassword) {
+      errorEl.textContent = 'Las contraseñas no coinciden';
+      return;
+    }
+    
+    if (newPassword.length < 6) {
+      errorEl.textContent = 'La nueva contraseña debe tener al menos 6 caracteres';
+      return;
+    }
+    
+    try {
+      const { data, error } = await supabaseClient.auth.updateUser({
+        password: newPassword
+      });
+      
+      if (error) {
+        if (error.message.includes('New password')) {
+          errorEl.textContent = 'La nueva contraseña no puede ser igual a la anterior';
+        } else {
+          errorEl.textContent = error.message;
+        }
+        return;
+      }
+      
+      successEl.textContent = 'Contraseña cambiada exitosamente';
+      e.target.reset();
+    } catch (err) {
+      errorEl.textContent = 'Error al cambiar contraseña: ' + err.message;
+    }
   },
 
   logout() {
